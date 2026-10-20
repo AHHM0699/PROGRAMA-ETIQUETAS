@@ -270,7 +270,7 @@ function alinear(donde) {
   if (donde === 'medio' || donde === 'centrar') dy = H / 2 - (c.y + c.h / 2);
   e.x = Math.round((e.x + dx / PMM) * 8) / 8;     // al punto más cercano (0,125 mm)
   e.y = Math.round((e.y + dy / PMM) * 8) / 8;
-  renderEditor(); pintarProps();
+  renderEditor(); pintarProps(); registrar();
 }
 
 // Imán: ajusta (dx, dy) en puntos para que algún borde o el centro de la
@@ -335,7 +335,7 @@ async function cargarListaPlantillas() {
   for (const sel of [$('#imp-plantilla'), $('#dis-plantilla')]) {
     const actual = sel.value;
     sel.innerHTML = (sel.id === 'dis-plantilla' ? '<option value="">(nueva)</option>' : '') +
-      PLANTILLAS.map(p => `<option value="${p.id}">${escapar(p.nombre || p.id)} · ${escapar(nombrePerfil(p.perfil))}</option>`).join('');
+      PLANTILLAS.map(p => `<option value="${p.id}">${p.base ? '★ ' : ''}${escapar(p.nombre || p.id)} · ${escapar(nombrePerfil(p.perfil))}</option>`).join('');
     if ([...sel.options].some(o => o.value === actual)) sel.value = actual;
   }
 }
@@ -417,6 +417,8 @@ $('#imp-boton').onclick = async () => {
 let PL = nuevaPlantilla();
 let SEL = -1;
 let ULTIMO = null;   // último dibujo (para tocar/arrastrar)
+let BASE_GUARDADA = false;    // la plantilla abierta está guardada como base
+let EDITAR_ORIGINAL = false;  // se pidió modificar esa base en lugar de crear una nueva
 
 function nuevaPlantilla() {
   return { nombre: '', perfil: ESTADO.perfil || Object.keys(PERFILES)[0] || 'trans', elementos: [] };
@@ -453,7 +455,77 @@ function prepararEditor() {
   $('#dis-perfil').innerHTML = Object.entries(PERFILES).map(([id, q]) => `<option value="${id}">${escapar(q.nombre)} (${q.ancho}×${q.alto} mm)</option>`).join('');
   $('#dis-perfil').value = PL.perfil;
   $('#dis-nombre').value = PL.nombre || '';
+  $('#dis-base').checked = !!PL.base;
+  avisoBase();
 }
+
+function avisoBase() {
+  const av = $('#dis-aviso');
+  av.classList.toggle('oculto', !BASE_GUARDADA);
+  if (!BASE_GUARDADA) return;
+  av.innerHTML = EDITAR_ORIGINAL
+    ? '<span>Estás modificando la plantilla base original: "Guardar" la reemplaza.</span><button type="button" data-original="0">Volver a protegerla</button>'
+    : '<span>Plantilla base: al guardar se crea una etiqueta nueva y la original queda igual.</span><button type="button" data-original="1">Modificar la original</button>';
+  av.querySelector('button').onclick = ev => { EDITAR_ORIGINAL = ev.target.dataset.original === '1'; avisoBase(); };
+}
+
+function abrirEnEditor(pl) {
+  PL = pl; SEL = -1;
+  BASE_GUARDADA = !!(pl.id && pl.base); EDITAR_ORIGINAL = false;
+  prepararEditor(); renderEditor(); pintarProps(); reiniciarHistoria();
+}
+
+// ─── Deshacer / rehacer ─────────────────────────────────────────────
+// Fotos del diseño después de cada cambio. Los elementos son planos: con
+// {...e} basta, y las imágenes (textos largos) se comparten, no se copian.
+let HIST = [], POS = -1, tHist = null;
+const MAX_HIST = 100;
+const foto = () => ({ perfil: PL.perfil, elementos: PL.elementos.map(e => ({ ...e })), sel: SEL });
+function mismaFoto(a, b) {
+  return a.perfil === b.perfil && a.elementos.length === b.elementos.length && a.elementos.every((e, i) => {
+    const o = b.elementos[i], ks = Object.keys(e);
+    return ks.length === Object.keys(o).length && ks.every(k => e[k] === o[k]);
+  });
+}
+// Agrega una foto si algo cambió desde la última.
+function registrar() {
+  clearTimeout(tHist); tHist = null;
+  const f = foto();
+  if (POS >= 0 && mismaFoto(HIST[POS], f)) { HIST[POS].sel = SEL; return botonesHistoria(); }
+  HIST.splice(POS + 1);
+  HIST.push(f);
+  if (HIST.length > MAX_HIST) HIST.shift();
+  POS = HIST.length - 1;
+  botonesHistoria();
+}
+// Lo que cambia letra a letra cuenta como un solo paso al dejar de escribir.
+function registrarLuego() { clearTimeout(tHist); tHist = setTimeout(registrar, 700); botonesHistoria(); }
+function reiniciarHistoria() { HIST = []; POS = -1; registrar(); }
+function botonesHistoria() {
+  $('#dis-deshacer').disabled = POS <= 0 && !tHist;
+  $('#dis-rehacer').disabled = POS >= HIST.length - 1 || !!tHist;
+}
+function moverHistoria(d) {
+  if (tHist) registrar();
+  const f = HIST[POS + d];
+  if (!f) return;
+  POS += d;
+  PL.perfil = f.perfil;
+  PL.elementos = f.elementos.map(e => ({ ...e }));
+  SEL = f.sel < PL.elementos.length ? f.sel : -1;
+  GUIAS = [];
+  prepararEditor(); renderEditor(); pintarProps(); botonesHistoria();
+}
+$('#dis-deshacer').onclick = () => moverHistoria(-1);
+$('#dis-rehacer').onclick = () => moverHistoria(1);
+// Ctrl+Z / Ctrl+Y (o Ctrl+Shift+Z). Dentro de un campo de texto deshace el propio campo.
+document.addEventListener('keydown', ev => {
+  if ($('#tab-disenar').classList.contains('oculto') || !(ev.ctrlKey || ev.metaKey) || ev.altKey) return;
+  if (ev.target.matches('textarea, input:not([type=checkbox])')) return;
+  const k = ev.key.toLowerCase();
+  if (k === 'z' && !ev.shiftKey) { ev.preventDefault(); moverHistoria(-1); }
+  else if (k === 'y' || (k === 'z' && ev.shiftKey)) { ev.preventDefault(); moverHistoria(1); }
+});
 
 // Junta los pedidos de redibujo: como mucho uno por cuadro de pantalla.
 let renderPendiente = false;
@@ -503,12 +575,14 @@ function pintarProps() {
       <label class="margen">Margen de los bordes (mm) <input id="dis-margen" type="number" min="0" step="0.5" value="${MARGEN_MM}"></label>
     </div>` + '<div class="botones"><button data-acc="subir">↑ Atrás</button><button data-acc="bajar">↓ Adelante</button><button data-acc="dup">Duplicar</button><button data-acc="quitar" class="peligro">Quitar</button></div>';
   caja.querySelectorAll('[data-k]').forEach(inp => {
-    inp.oninput = inp.onchange = () => {
+    const aplicar = () => {
       const k = inp.dataset.k;
       e[k] = inp.type === 'checkbox' ? inp.checked : inp.type === 'number' ? (inp.value === '' ? null : +inp.value)
         : (k === 'rot' ? +inp.value : inp.value);
       pedirRender();
     };
+    inp.oninput = () => { aplicar(); registrarLuego(); };
+    inp.onchange = () => { aplicar(); registrar(); };
   });
   caja.querySelectorAll('[data-alinear]').forEach(b => b.onclick = () => alinear(b.dataset.alinear));
   const mg = caja.querySelector('#dis-margen');
@@ -521,7 +595,7 @@ function pintarProps() {
     if (a === 'dup') { L.splice(SEL + 1, 0, { ...e, x: e.x + 2, y: e.y + 2 }); SEL++; }
     if (a === 'subir' && SEL > 0) { [L[SEL - 1], L[SEL]] = [L[SEL], L[SEL - 1]]; SEL--; }
     if (a === 'bajar' && SEL < L.length - 1) { [L[SEL + 1], L[SEL]] = [L[SEL], L[SEL + 1]]; SEL++; }
-    renderEditor(); pintarProps();
+    renderEditor(); pintarProps(); registrar();
   });
 }
 
@@ -539,7 +613,7 @@ function elegirImagen(e) {
     const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(im, 0, 0, c.width, c.height);
     e.src = c.toDataURL('image/png');
     await asegurarImagenes(PL);
-    renderEditor(); pintarProps();
+    renderEditor(); pintarProps(); registrar();
   };
   inp.click();
 }
@@ -549,36 +623,57 @@ $$('[data-nuevo]').forEach(b => b.onclick = () => {
   const e = NUEVOS[b.dataset.nuevo]();
   if (e.tipo === 'imagen') { PL.elementos.unshift(e); SEL = 0; elegirImagen(e); }
   else { PL.elementos.push(e); SEL = PL.elementos.length - 1; }
-  renderEditor(); pintarProps();
+  renderEditor(); pintarProps(); registrar();
 });
 
 $('#dis-nombre').oninput = () => { PL.nombre = $('#dis-nombre').value; };
-$('#dis-perfil').onchange = () => { PL.perfil = $('#dis-perfil').value; renderEditor(); };
+$('#dis-perfil').onchange = () => { PL.perfil = $('#dis-perfil').value; renderEditor(); registrar(); };
+$('#dis-base').onchange = () => { PL.base = $('#dis-base').checked; };
 $('#dis-plantilla').onchange = async () => {
   const id = $('#dis-plantilla').value;
-  if (!id) { PL = nuevaPlantilla(); } else {
-    mensaje($('#dis-msg'), 'Cargando plantilla…');
-    PL = await api('GET', '/api/plantilla?id=' + id); PL.id = id; await asegurarImagenes(PL);
-  }
-  SEL = -1; prepararEditor(); renderEditor(); pintarProps();
-};
-$('#dis-nueva').onclick = () => { $('#dis-plantilla').value = ''; PL = nuevaPlantilla(); SEL = -1; prepararEditor(); renderEditor(); pintarProps(); };
-$('#dis-guardar').onclick = async () => {
-  if (!PL.nombre) return mensaje($('#dis-msg'), 'Ponle un nombre a la plantilla.', 'mal');
+  if (!id) return abrirEnEditor(nuevaPlantilla());
+  mensaje($('#dis-msg'), 'Cargando plantilla…');
   try {
-    const { id, ...cuerpo } = PL;
-    const r = await api('PUT', '/api/plantilla' + (id ? '?id=' + id : ''), cuerpo);
-    PL.id = r.id;
-    await cargarListaPlantillas();
-    $('#dis-plantilla').value = r.id;
-    mensaje($('#dis-msg'), 'Guardada.', 'ok');
+    const pl = await api('GET', '/api/plantilla?id=' + id); pl.id = id; await asegurarImagenes(pl);
+    abrirEnEditor(pl);
   } catch (er) { mensaje($('#dis-msg'), er.message, 'mal'); }
 };
+$('#dis-nueva').onclick = () => { $('#dis-plantilla').value = ''; abrirEnEditor(nuevaPlantilla()); };
+
+// Guardar sobre una plantilla base (sin "Modificar la original") o con
+// "Guardar como nueva" crea otra plantilla; la abierta no se toca.
+async function guardarPlantilla(comoNueva) {
+  if (!PL.nombre) return mensaje($('#dis-msg'), 'Ponle un nombre a la plantilla.', 'mal');
+  const copia = !!PL.id && (comoNueva || (BASE_GUARDADA && !EDITAR_ORIGINAL));
+  const { id, ...cuerpo } = PL;
+  if (copia) {
+    const original = PLANTILLAS.find(p => p.id === id), sugerido = original && original.nombre === PL.nombre ? PL.nombre + ' (nueva)' : PL.nombre;
+    const nombre = (prompt(BASE_GUARDADA ? 'La plantilla base no se modifica. Nombre de la nueva etiqueta:' : 'Nombre de la nueva plantilla:', sugerido) || '').trim();
+    if (!nombre) return;
+    Object.assign(cuerpo, { nombre, base: false });
+  }
+  try {
+    const ruta = '/api/plantilla' + (copia || !id ? '' : '?id=' + id + (BASE_GUARDADA ? '&original=1' : ''));
+    const r = await api('PUT', ruta, cuerpo);
+    const nombreOriginal = PL.nombre, eraBase = BASE_GUARDADA;
+    Object.assign(PL, { id: r.id, nombre: cuerpo.nombre, base: !!cuerpo.base });
+    if (copia) EDITAR_ORIGINAL = false;
+    BASE_GUARDADA = PL.base;
+    await cargarListaPlantillas();
+    $('#dis-plantilla').value = r.id;
+    prepararEditor();
+    mensaje($('#dis-msg'), !copia ? (eraBase ? 'Plantilla base actualizada.' : PL.base ? 'Guardada como plantilla base.' : 'Guardada.')
+      : `Guardada como "${PL.nombre}".` + (comoNueva ? '' : ` La plantilla base "${nombreOriginal}" quedó igual.`), 'ok');
+  } catch (er) { mensaje($('#dis-msg'), er.message, 'mal'); }
+}
+$('#dis-guardar').onclick = () => guardarPlantilla(false);
+$('#dis-copia').onclick = () => guardarPlantilla(true);
 $('#dis-borrar').onclick = async () => {
-  if (!PL.id || !confirm(`¿Eliminar la plantilla "${PL.nombre}"?`)) return;
+  if (!PL.id || !confirm(BASE_GUARDADA ? `"${PL.nombre}" es una plantilla base. ¿Eliminarla de todos modos?` : `¿Eliminar la plantilla "${PL.nombre}"?`)) return;
   await api('DELETE', '/api/plantilla?id=' + PL.id);
-  PL = nuevaPlantilla(); SEL = -1;
-  await cargarListaPlantillas(); prepararEditor(); renderEditor(); pintarProps();
+  await cargarListaPlantillas();
+  $('#dis-plantilla').value = '';
+  abrirEnEditor(nuevaPlantilla());
 };
 
 // Tocar para elegir, arrastrar para mover y arrastrar la manija azul de la
@@ -630,7 +725,7 @@ $('#dis-borrar').onclick = async () => {
     }
     pedirRender();
   });
-  const soltar = () => { if (arrastre) { arrastre = null; GUIAS = []; renderEditor(); pintarProps(); } };
+  const soltar = () => { if (arrastre) { arrastre = null; GUIAS = []; renderEditor(); pintarProps(); registrar(); } };
   cv.addEventListener('pointerup', soltar);
   cv.addEventListener('pointercancel', soltar);
 })();
@@ -740,10 +835,9 @@ $('#ver-buscar').onclick = async () => {
 // ─── Inicio ─────────────────────────────────────────────────────────
 (async () => {
   await refrescarEstado();
-  PL = nuevaPlantilla();
   try { await cargarListaPlantillas(); } catch (e) { /* sin servidor */ }
   await elegirParaImprimir();
-  prepararEditor(); renderEditor();
+  abrirEnEditor(nuevaPlantilla());
   mostrarVersion();
   setInterval(() => { if (!document.hidden) refrescarEstado(); }, 8000);
 })();

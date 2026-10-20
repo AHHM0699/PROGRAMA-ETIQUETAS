@@ -45,8 +45,12 @@
       <label>Plantilla <select id="dis-plantilla"></select></label>
       <label>Nombre <input id="dis-nombre" placeholder="Nombre de la plantilla"></label>
       <label>Rollo <select id="dis-perfil"></select></label>
+      <label class="check base"><input id="dis-base" type="checkbox"> Plantilla base (la original no se modifica)</label>
     </div>
+    <div id="dis-aviso" class="aviso oculto"></div>
     <div class="herramientas">
+      <button id="dis-deshacer" title="Deshacer (Ctrl+Z)" disabled>↶ Deshacer</button>
+      <button id="dis-rehacer" title="Rehacer (Ctrl+Y)" disabled>↷ Rehacer</button>
       <button data-nuevo="texto">+ Texto</button>
       <button data-nuevo="imagen">+ Imagen</button>
       <button data-nuevo="barras">+ Código de barras</button>
@@ -61,12 +65,14 @@
         <div id="dis-props"></div>
         <div class="botones">
           <button id="dis-guardar" class="primario">Guardar</button>
+          <button id="dis-copia">Guardar como nueva</button>
           <button id="dis-nueva">Nueva</button>
           <button id="dis-borrar" class="peligro">Eliminar</button>
         </div>
         <p id="dis-msg" class="msg"></p>
         <p class="ayuda">Escribe <code>{campo}</code> en un texto, código o QR para pedirlo al imprimir.
-          <code>{#}</code> numera cada copia. Arrastra los elementos sobre la etiqueta para moverlos.</p>
+          <code>{#}</code> numera cada copia. Arrastra los elementos sobre la etiqueta para moverlos.
+          Una <b>plantilla base</b> (★) no se pisa: al guardarla con cambios se crea una etiqueta nueva.</p>
       </div>
     </div>
   </section>

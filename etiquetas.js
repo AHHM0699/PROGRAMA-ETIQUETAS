@@ -436,7 +436,7 @@ const RUTAS = {
     fs.mkdirSync(DIR_PLANT, { recursive: true });
     return fs.readdirSync(DIR_PLANT).filter(f => f.endsWith('.json')).map(f => {
       const t = leerJSON(path.join(DIR_PLANT, f), {});
-      return { id: f.slice(0, -5), nombre: t.nombre, perfil: t.perfil, modificada: t.modificada };
+      return { id: f.slice(0, -5), nombre: t.nombre, perfil: t.perfil, base: !!t.base, modificada: t.modificada };
     }).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
   },
   'GET /api/plantilla': async q => {
@@ -445,6 +445,10 @@ const RUTAS = {
     return t;
   },
   'PUT /api/plantilla': async (q, body) => {
+    // Una plantilla base solo se reemplaza si se pidió a propósito (?original=1).
+    if (q.get('id') && !q.get('original') && leerJSON(rutaPlantilla(q.get('id')), {}).base) {
+      throw Object.assign(new Error('Es una plantilla base: guárdala como nueva o toca "Modificar la original".'), { codigo: 409 });
+    }
     const id = q.get('id') || `${(body.nombre || 'plantilla').toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'plantilla'}-${crypto.randomBytes(3).toString('hex')}`;
     guardarJSON(rutaPlantilla(id), { ...body, modificada: new Date().toISOString() });
     return { ok: true, id };
