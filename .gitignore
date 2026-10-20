@@ -1,0 +1,4 @@
+config.json
+data/
+*.log
+public/.version.json

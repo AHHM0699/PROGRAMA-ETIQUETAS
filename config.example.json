@@ -1,0 +1,7 @@
+{
+  "impresoraHost": "192.168.1.251",
+  "impresoraPuerto": 9100,
+  "puertoWeb": 8091,
+  "nombreLocal": "etiche",
+  "actualizar": { "repo": "AHHM0699/PROGRAMA-ETIQUETAS", "rama": "main", "minutos": 5 }
+}

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Etiquetas</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Etiquetas</h1>
+  <div id="estado" class="chip">Conectando…</div>
+</header>
+
+<nav>
+  <button data-tab="imprimir" class="activo">Imprimir</button>
+  <button data-tab="disenar">Diseñar</button>
+  <button data-tab="rollos">Rollos</button>
+</nav>
+
+<main>
+  <!-- ─── Imprimir ─── -->
+  <section id="tab-imprimir">
+    <div class="fila-sup">
+      <label>Plantilla
+        <select id="imp-plantilla"></select>
+      </label>
+    </div>
+    <div id="imp-aviso" class="aviso oculto"></div>
+    <div class="dos-col">
+      <div class="lienzo-caja"><canvas id="imp-vista"></canvas></div>
+      <div class="panel">
+        <div id="imp-campos"></div>
+        <label>Copias <input id="imp-copias" type="number" min="1" max="500" value="1"></label>
+        <label id="imp-num-caja" class="oculto">Numerar desde <input id="imp-num" type="number" value="1"></label>
+        <button id="imp-boton" class="primario">Imprimir</button>
+        <p id="imp-msg" class="msg"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Diseñar ─── -->
+  <section id="tab-disenar" class="oculto">
+    <div class="fila-sup">
+      <label>Plantilla <select id="dis-plantilla"></select></label>
+      <label>Nombre <input id="dis-nombre" placeholder="Nombre de la plantilla"></label>
+      <label>Rollo <select id="dis-perfil"></select></label>
+    </div>
+    <div class="herramientas">
+      <button data-nuevo="texto">+ Texto</button>
+      <button data-nuevo="imagen">+ Imagen</button>
+      <button data-nuevo="barras">+ Código de barras</button>
+      <button data-nuevo="qr">+ QR</button>
+      <button data-nuevo="recuadro">+ Recuadro / línea</button>
+      <input id="dis-archivo" type="file" accept="image/*" hidden>
+    </div>
+    <div class="dos-col">
+      <div class="lienzo-caja"><canvas id="dis-lienzo"></canvas></div>
+      <div class="panel">
+        <div id="dis-lista" class="lista"></div>
+        <div id="dis-props"></div>
+        <div class="botones">
+          <button id="dis-guardar" class="primario">Guardar</button>
+          <button id="dis-nueva">Nueva</button>
+          <button id="dis-borrar" class="peligro">Eliminar</button>
+        </div>
+        <p id="dis-msg" class="msg"></p>
+        <p class="ayuda">Escribe <code>{campo}</code> en un texto, código o QR para pedirlo al imprimir.
+          <code>{#}</code> numera cada copia. Arrastra los elementos sobre la etiqueta para moverlos.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─── Rollos ─── -->
+  <section id="tab-rollos" class="oculto">
+    <p id="rol-actual" class="aviso"></p>
+    <div id="rol-lista"></div>
+    <div class="botones">
+      <button id="rol-agregar">+ Agregar rollo</button>
+      <button id="rol-guardar" class="primario">Guardar cambios</button>
+      <button id="rol-calibrar">Calibrar ahora</button>
+    </div>
+    <p id="rol-msg" class="msg"></p>
+    <p class="ayuda">Al poner otro rollo: elige su perfil y toca <b>Cambiar a este rollo</b> (ajusta el sensor y calibra).
+      Si la impresión sale corrida, imprime la prueba de márgenes y ajusta el origen: cada 0,125 mm es un punto.</p>
+    <div class="version">
+      <span id="ver-texto" class="ayuda">Versión de la página: …</span>
+      <button id="ver-buscar">Buscar actualización</button>
+    </div>
+  </section>
+</main>
+
+<script src="vendor/JsBarcode.all.min.js"></script>
+<script src="vendor/qrcode.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
