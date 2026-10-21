@@ -216,13 +216,21 @@ async function esperarLista(maxMs = 45000) {
 // centra la ventana y el origen X se movería al cambiar el tamaño.
 // La Y va por SHIFT y no por REFERENCE: REFERENCE corre el dibujo dentro
 // de la ventana de SIZE y lo de abajo quedaría recortado.
+// Igual que los trabajos de BarTender (capturados el 2026-10-21), que no
+// descalibran la impresora. SET RIBBON NO va aquí: mandado en cada trabajo,
+// con el sensor en lectura reflectiva, dejaba la impresora perdida (avanzaba
+// ~10 mm y LED rojo, hasta el botón FEED). La cinta se fija al cambiar de rollo.
 function cabeceraTSPL(p) {
   const l = [
     `SIZE ${ANCHO_CABEZAL / PUNTOS_MM} mm,${p.alto} mm`,
+    'DIRECTION 0,0',
     `REFERENCE ${p.referenciaX | 0},0`,
-    `SHIFT ${p.referenciaY | 0}`,
-    `SET RIBBON ${p.ribbon === false ? 'OFF' : 'ON'}`,
+    'OFFSET 0 mm',
+    'SET PEEL OFF',
+    'SET CUTTER OFF',
+    'SET TEAR ON',
   ];
+  if (p.referenciaY | 0) l.push(`SHIFT ${p.referenciaY | 0}`);
   if (p.densidad != null && p.densidad !== '') l.push(`DENSITY ${p.densidad | 0}`);
   if (p.velocidad != null && p.velocidad !== '') l.push(`SPEED ${p.velocidad | 0}`);
   l.push('CLS');
@@ -395,11 +403,15 @@ const RUTAS = {
     const p = perfiles()[body.perfil];
     if (!p) throw Object.assign(new Error('Perfil desconocido'), { codigo: 404 });
     return imp.turno(async () => {
-      await setval('media_sensor', p.sensor);
-      await esperar(300);
+      // Solo se toca lo que de verdad cambia: fijar un ajuste, aunque sea al
+      // mismo valor, puede hacerle perder a la impresora lo que calibró.
+      // Orden: cinta, sensor y al final la lectura (cambiar el sensor la reajusta sola).
+      const cinta = p.ribbon === false ? 'off' : 'on';
+      if (await getval('sw_ribbon') !== cinta) { await setval('sw_ribbon', cinta); await esperar(300); }
+      if (await getval('media_sensor') !== p.sensor) { await setval('media_sensor', p.sensor); await esperar(300); }
       const sensor = await getval('media_sensor');
       if (sensor !== p.sensor) throw new Error(`La impresora no aceptó el sensor (quedó en "${sensor}")`);
-      if (p.lectura) {
+      if (p.lectura && await getval('sensor_select') !== p.lectura) {
         await setval('sensor_select', p.lectura);
         await esperar(300);
       }

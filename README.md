@@ -34,4 +34,5 @@ Además de TSPL, la HT300 entiende comandos de configuración de HPRT por el mis
 - `printer_status` → `"printer status:\0"` + 4 bytes: lista `00 00 02 00`, cabezal abierto `00 20 00 00`, calibrando `00 00 01 00`.
 - **No consultar `country_code`**: el firmware vuelca unos 64 KB de memoria.
 - Con `SIZE` menor a 108 mm la impresora centra la ventana en el cabezal; por eso se manda siempre `SIZE 108 mm` y el origen X va en `REFERENCE`. La Y va con `SHIFT` para no recortar el pie.
-- Una sola conversación a la vez: dos programas consultando al mismo tiempo desordenan las respuestas.
+- Una sola conversación a la vez: dos programas consultando al mismo tiempo desordenan las respuestas (también USB + red); se arregla apagando la impresora.
+- Los trabajos copian la cabecera de BarTender (`SIZE`, `DIRECTION 0,0`, `REFERENCE`, `OFFSET 0 mm`, `SET PEEL OFF`, `SET CUTTER OFF`, `SET TEAR ON`). **No mandar `SET RIBBON` en cada trabajo**: con el sensor en lectura reflectiva dejaba la impresora sin poder avanzar (LED rojo). La cinta se fija con `setval "sw_ribbon"` al cambiar de rollo.
