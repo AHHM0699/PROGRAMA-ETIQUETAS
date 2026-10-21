@@ -66,6 +66,15 @@ pgrep -f programa-etiquetas/arrancar.sh >/dev/null || nohup "\$HOME/programa-eti
 EOF
 fi
 
+# Arranque al encender el celular, sin abrir Termux (~/.termux/boot).
+mkdir -p "$HOME/.termux/boot"
+cat > "$HOME/.termux/boot/programa-etiquetas.sh" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+termux-wake-lock
+pgrep -f programa-etiquetas/arrancar.sh >/dev/null || nohup "$HOME/programa-etiquetas/arrancar.sh" >/dev/null 2>&1 &
+EOF
+chmod +x "$HOME/.termux/boot/programa-etiquetas.sh"
+
 sleep 2
 pgrep -f programa-etiquetas/arrancar.sh >/dev/null || nohup "$DESTINO/arrancar.sh" >/dev/null 2>&1 &
 
