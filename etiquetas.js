@@ -200,13 +200,28 @@ async function estadoImpresora() {
   return { estado: est, sensor, lectura };
 }
 
-async function esperarLista(maxMs = 45000) {
+// ─── No molestar mientras se mueve ──────────────────────────────────
+// Con el sensor en lectura reflectiva, una consulta (getval) mientras la
+// impresora avanza papel la desorienta: imprime ~10 mm y queda en error, y
+// solo una calibración la arregla (probado el 2026-10-21). BarTender y la
+// utilidad de HPRT no consultan nada en movimiento; aquí tampoco.
+let quietoHasta = 0;
+const enMovimiento = () => Date.now() < quietoHasta;
+function dejarQuieta(ms) { quietoHasta = Math.max(quietoHasta, Date.now()) + ms; }
+// Tiempo de impresión con margen: ~15 ms por mm de papel (5 ips son ~8) + arranque.
+const msImpresion = (p, etiquetas) => 4000 + etiquetas * ((+p.alto || 100) + 5) * 15;
+
+// Tras "calibrate_sensor": esperar callados lo que tarda (~17 s) y recién
+// entonces preguntar, cada 2 s, hasta que quede lista.
+async function esperarLista(maxMs = 60000) {
   const fin = Date.now() + maxMs;
-  await esperar(2500);                 // da tiempo a que empiece a moverse
+  dejarQuieta(20000);
+  await esperar(20000);
   while (Date.now() < fin) {
     const est = leerEstado(await getval('printer_status'));
     if (est && est.listo && !est.calibrando) return est;
-    await esperar(1000);
+    dejarQuieta(2000);
+    await esperar(2000);
   }
   throw new Error('La impresora no volvió a quedar lista');
 }
@@ -292,6 +307,9 @@ async function verificarParaImprimir(idPerfil) {
     const ps = perfiles();
     throw Object.assign(new Error(`El rollo cargado es "${(ps[st.perfil] || {}).nombre || 'desconocido'}". Cambia de rollo a "${ps[idPerfil].nombre}" primero.`), { codigo: 409 });
   }
+  // Si todavía está imprimiendo lo anterior, no se le pregunta: el trabajo
+  // queda en su memoria y sale a continuación.
+  if (enMovimiento()) return;
   const est = leerEstado(await getval('printer_status'));
   if (!est) throw Object.assign(new Error('La impresora no contesta'), { codigo: 503 });
   if (est.cabezalAbierto) throw Object.assign(new Error('El cabezal está abierto'), { codigo: 409 });
@@ -370,8 +388,9 @@ const RUTAS = {
     const ps = perfiles(), st = estadoGuardado();
     const base = { conectada: imp.conectada, impresora: `${IMP_HOST}:${IMP_PUERTO}`, perfil: st.perfil || null, perfiles: ps };
     if (!imp.conectada) return base;
-    // Imprimiendo o calibrando: no esperar en la cola, contestar con lo último que se supo.
-    if (imp.pendientes > 0 && ultimoEstado) return { ...base, ...ultimoEstado, ocupada: true };
+    // Imprimiendo o calibrando: no esperar en la cola ni preguntarle a la
+    // impresora; contestar con lo último que se supo.
+    if (enMovimiento() || imp.pendientes > 0) return { ...base, ...(ultimoEstado || {}), ocupada: true };
     // Nunca devuelve error: un tropiezo con la impresora no es "el Samsung no responde".
     try { ultimoEstado = await imp.turno(estadoImpresora); return { ...base, ...ultimoEstado }; }
     catch (e) { return { ...base, estado: null, errorImpresora: e.message }; }
@@ -438,6 +457,7 @@ const RUTAS = {
     return imp.turno(async () => {
       await verificarParaImprimir(id);
       await imp.escribir(trabajoPrueba(p));
+      dejarQuieta(msImpresion(p, 1));
       log(`Prueba de márgenes: ${p.nombre}`);
       return { ok: true };
     });
@@ -451,6 +471,7 @@ const RUTAS = {
     return imp.turno(async () => {
       await verificarParaImprimir(body.perfil);
       await imp.escribir(trabajo);
+      dejarQuieta(msImpresion(p, Math.ceil(copias / Math.max(1, p.columnas | 0))));
       log(`Impresas ${copias} etiqueta(s) "${body.nombre || 'sin nombre'}" en ${p.nombre} (${trabajo.length} bytes)`);
       return { ok: true, copias };
     });

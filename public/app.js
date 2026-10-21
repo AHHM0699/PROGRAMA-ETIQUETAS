@@ -304,8 +304,8 @@ async function refrescarEstado() {
     PERFILES = ESTADO.perfiles || {};
     const e = ESTADO.estado, rollo = ESTADO.perfil ? nombrePerfil(ESTADO.perfil) : 'rollo sin elegir';
     if (!ESTADO.conectada) { chip.textContent = 'Impresora sin conexión (el Samsung reintenta solo)'; chip.className = 'chip mal'; }
-    else if (!e) { chip.textContent = 'La impresora no contesta'; chip.className = 'chip mal'; chip.title = ESTADO.errorImpresora || ''; }
     else if (ESTADO.ocupada) { chip.textContent = 'Trabajando… (imprimiendo o calibrando)'; chip.className = 'chip ocupada'; }
+    else if (!e) { chip.textContent = 'La impresora no contesta'; chip.className = 'chip mal'; chip.title = ESTADO.errorImpresora || ''; }
     else if (e.cabezalAbierto) { chip.textContent = 'Cabezal abierto'; chip.className = 'chip mal'; }
     else if (e.calibrando) { chip.textContent = 'Calibrando…'; chip.className = 'chip ocupada'; }
     else if (e.listo) { chip.textContent = `Lista · ${rollo}`; chip.className = 'chip ok'; }
