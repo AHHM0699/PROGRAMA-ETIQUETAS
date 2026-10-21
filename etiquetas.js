@@ -65,17 +65,21 @@ const F_VERSION  = path.join(PUBLICO, '.version.json'); // dentro de public: si 
 // Y = corrimiento vertical respecto de la marca o el gap (SHIFT).
 const PERFILES_INICIALES = {
   trans: {
-    nombre: 'TRANS (marca negra)', ancho: 100, alto: 100, sensor: 'black mark',
+    nombre: 'TRANS (marca negra)', ancho: 100, alto: 100, sensor: 'black mark', lectura: 'reflective',
     referenciaX: 44, referenciaY: 8, ribbon: true, densidad: null, velocidad: null,
     columnas: 1, separacion: 0,
   },
   conmemorativas: {
-    nombre: 'Conmemorativas blancas (gap)', ancho: 101, alto: 150, sensor: 'gap',
+    // Gap leído en REFLECTIVO: con transmisivo no ve el espacio en este papel (oct-2026).
+    nombre: 'Conmemorativas blancas (gap)', ancho: 101, alto: 150, sensor: 'gap', lectura: 'reflective',
     referenciaX: 20, referenciaY: 0, ribbon: true, densidad: null, velocidad: null,
     columnas: 1, separacion: 0,
   },
 };
 const SENSORES = ['gap', 'black mark', 'continuous'];
+// Cómo lee el sensor. Al cambiar media_sensor la impresora elige sola
+// (gap → transmissive), así que si el perfil pide otra, se fija después.
+const LECTURAS = ['', 'reflective', 'transmissive'];   // '' = la que elija la impresora
 
 function log(...a) {
   const t = new Date().toLocaleString('es-PE', { timeZone: 'America/Lima', hour12: false });
@@ -192,7 +196,8 @@ function leerEstado(b) {
 async function estadoImpresora() {
   const est = leerEstado(await getval('printer_status'));
   const sensor = await getval('media_sensor');
-  return { estado: est, sensor };
+  const lectura = await getval('sensor_select');
+  return { estado: est, sensor, lectura };
 }
 
 async function esperarLista(maxMs = 45000) {
@@ -377,6 +382,7 @@ const RUTAS = {
       if (!/^[a-z0-9-]{1,40}$/.test(id)) throw Object.assign(new Error(`Id de perfil inválido: ${id}`), { codigo: 400 });
       if (!(p.ancho > 0 && p.alto > 0)) throw Object.assign(new Error(`${p.nombre}: falta el tamaño`), { codigo: 400 });
       if (!SENSORES.includes(p.sensor)) throw Object.assign(new Error(`${p.nombre}: sensor inválido`), { codigo: 400 });
+      if (!LECTURAS.includes(p.lectura || '')) throw Object.assign(new Error(`${p.nombre}: lectura del sensor inválida`), { codigo: 400 });
       if (Math.round(anchoTotal(p) * PUNTOS_MM) + (p.referenciaX | 0) > ANCHO_CABEZAL + 16) throw Object.assign(new Error(`${p.nombre}: el ancho total pasa los 108 mm del cabezal`), { codigo: 400 });
     }
     guardarJSON(F_PERFILES, ps);
@@ -393,10 +399,16 @@ const RUTAS = {
       await esperar(300);
       const sensor = await getval('media_sensor');
       if (sensor !== p.sensor) throw new Error(`La impresora no aceptó el sensor (quedó en "${sensor}")`);
+      if (p.lectura) {
+        await setval('sensor_select', p.lectura);
+        await esperar(300);
+      }
+      const lectura = await getval('sensor_select');
+      if (p.lectura && lectura !== p.lectura) throw new Error(`La impresora no aceptó la lectura del sensor (quedó en "${lectura}")`);
       if (p.sensor !== 'continuous' && !body.sinCalibrar) { await accion('calibrate_sensor'); await esperarLista(); }
       guardarJSON(F_ESTADO, { ...estadoGuardado(), perfil: body.perfil, desde: new Date().toISOString() });
-      log(`Rollo cambiado a "${p.nombre}" (sensor ${sensor})`);
-      return { ok: true, sensor };
+      log(`Rollo cambiado a "${p.nombre}" (sensor ${sensor}, lectura ${lectura})`);
+      return { ok: true, sensor, lectura };
     });
   },
 

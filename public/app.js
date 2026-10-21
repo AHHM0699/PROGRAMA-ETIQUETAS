@@ -735,9 +735,9 @@ let EDIT_PERF = null;
 
 function pintarRollos() {
   if (!EDIT_PERF) EDIT_PERF = JSON.parse(JSON.stringify(PERFILES));
-  $('#rol-actual').textContent = ESTADO.perfil ? `Rollo cargado: ${nombrePerfil(ESTADO.perfil)} · sensor de la impresora: ${ESTADO.sensor || '?'}` : 'Todavía no se eligió qué rollo está cargado.';
+  $('#rol-actual').textContent = ESTADO.perfil ? `Rollo cargado: ${nombrePerfil(ESTADO.perfil)} · sensor de la impresora: ${ESTADO.sensor || '?'}${ESTADO.lectura ? ' (' + ESTADO.lectura + ')' : ''}` : 'Todavía no se eligió qué rollo está cargado.';
   const campos = [['nombre', 'Nombre', 'text'], ['ancho', 'Ancho (mm)', 'number'], ['alto', 'Alto (mm)', 'number'],
-    ['sensor', 'Sensor', 'sel'], ['refXmm', 'Origen X (mm)', 'number'], ['refYmm', 'Origen Y (mm)', 'number'],
+    ['sensor', 'Sensor', 'sel'], ['lectura', 'Lectura del sensor', 'lectura'], ['refXmm', 'Origen X (mm)', 'number'], ['refYmm', 'Origen Y (mm)', 'number'],
     ['columnas', 'Columnas', 'number'], ['separacion', 'Separación entre columnas (mm)', 'number'],
     ['densidad', 'Densidad (vacío = la de la impresora)', 'number'], ['velocidad', 'Velocidad (vacío = la de la impresora)', 'number'], ['ribbon', 'Usa cinta (ribbon)', 'bool']];
   $('#rol-lista').innerHTML = Object.entries(EDIT_PERF).map(([id, p]) => `
@@ -746,6 +746,7 @@ function pintarRollos() {
       <div class="rejilla">${campos.map(([k, et, t]) => {
         const v = k === 'refXmm' ? p.referenciaX / PMM : k === 'refYmm' ? p.referenciaY / PMM : p[k];
         if (t === 'sel') return `<label>${et}<select data-k="${k}">${['gap', 'black mark', 'continuous'].map(s => `<option ${s === v ? 'selected' : ''} value="${s}">${{ gap: 'Gap (separadas)', 'black mark': 'Marca negra', continuous: 'Continuo' }[s]}</option>`).join('')}</select></label>`;
+        if (t === 'lectura') return `<label>${et}<select data-k="${k}">${[['', 'Automática'], ['reflective', 'Reflectiva'], ['transmissive', 'Transmisiva']].map(([s, n]) => `<option ${s === (v || '') ? 'selected' : ''} value="${s}">${n}</option>`).join('')}</select></label>`;
         if (t === 'bool') return `<label class="check"><input data-k="${k}" type="checkbox" ${v !== false ? 'checked' : ''}>${et}</label>`;
         return `<label>${et}<input data-k="${k}" type="${t}" ${t === 'number' ? 'step="0.125"' : ''} value="${v ?? ''}"></label>`;
       }).join('')}</div>
@@ -797,7 +798,7 @@ async function accionRollo(id, acc, boton) {
 
 $('#rol-agregar').onclick = () => {
   const id = 'rollo-' + Date.now().toString(36);
-  EDIT_PERF[id] = { nombre: 'Nuevo rollo', ancho: 100, alto: 50, sensor: 'gap', referenciaX: 0, referenciaY: 0, ribbon: true, densidad: null, velocidad: null, columnas: 1, separacion: 0 };
+  EDIT_PERF[id] = { nombre: 'Nuevo rollo', ancho: 100, alto: 50, sensor: 'gap', lectura: '', referenciaX: 0, referenciaY: 0, ribbon: true, densidad: null, velocidad: null, columnas: 1, separacion: 0 };
   pintarRollos();
 };
 $('#rol-guardar').onclick = async () => {

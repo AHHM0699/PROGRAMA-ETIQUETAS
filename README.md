@@ -29,7 +29,7 @@ Además de TSPL, la HT300 entiende comandos de configuración de HPRT por el mis
 | `ESC FS "& V1 setval \"clave\" \"valor\"\r\n"` | ninguna |
 | `ESC FS "& V1 do \"accion\"\r\n"` | ninguna |
 
-- Claves útiles: `media_sensor` (`gap`, `black mark`, `continuous`), `printer_status`, `density`, `speed`, `print_mode`, `eth_ip`, `eth_dhcp`, `version`.
+- Claves útiles: `media_sensor` (`gap`, `black mark`, `continuous`), `sensor_select` (`reflective`, `transmissive`; al cambiar `media_sensor` la impresora lo elige sola y hay que fijarlo después si el papel pide otro), `printer_status`, `density`, `speed`, `print_mode`, `eth_ip`, `eth_dhcp`, `version`.
 - Acciones: `calibrate_sensor`, `configguration_page` (así, con doble g), `print_test_page`, `reset_printer`.
 - `printer_status` → `"printer status:\0"` + 4 bytes: lista `00 00 02 00`, cabezal abierto `00 20 00 00`, calibrando `00 00 01 00`.
 - **No consultar `country_code`**: el firmware vuelca unos 64 KB de memoria.
