@@ -138,13 +138,16 @@ function dibujar(pl, perfil, valores, relleno) {
         x.font = `${e.cursiva ? 'italic ' : ''}${e.negrita ? 'bold ' : ''}${px}px ${e.fuente || 'sans-serif'}`;
         x.fillStyle = color; x.textBaseline = 'top';
         const anchoCaja = (e.w || 0) * PMM, lh = px * (e.interlineado || 1.15);
+        // Ancho libre: se parte en líneas solo si llegaría al borde de la
+        // etiqueta (con 1,5 mm de margen), en lugar de salir cortado.
+        const limite = anchoCaja || ((e.rot | 0) ? 0 : Math.max(px, W - ex - 1.5 * PMM));
         const lineas = [];
         for (const parrafo of sustituir(e.texto, valores, relleno).split('\n')) {
-          if (!anchoCaja) { lineas.push(parrafo); continue; }
+          if (!limite || (!anchoCaja && x.measureText(parrafo).width <= limite)) { lineas.push(parrafo); continue; }
           let actual = '';
           for (const pal of parrafo.split(' ')) {
             const prueba = actual ? actual + ' ' + pal : pal;
-            if (actual && x.measureText(prueba).width > anchoCaja) { lineas.push(actual); actual = pal; } else actual = prueba;
+            if (actual && x.measureText(prueba).width > limite) { lineas.push(actual); actual = pal; } else actual = prueba;
           }
           lineas.push(actual);
         }
