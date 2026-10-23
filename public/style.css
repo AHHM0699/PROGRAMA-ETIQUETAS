@@ -67,3 +67,11 @@ code { background: var(--fondo); padding: 1px 5px; border-radius: 4px; }
 .rollo h3 { margin: 0 0 10px; font-size: 15px; display: flex; justify-content: space-between; gap: 8px; }
 .rollo .rejilla { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 .rollo .botones { margin-top: 10px; }
+.excel { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--borde); }
+.excel-tit { font-weight: 600; font-size: 14px; }
+.excel-tit small { font-weight: 400; color: var(--suave); margin-left: 6px; }
+#xl-info { display: flex; flex-direction: column; gap: 8px; }
+.excel-nav { display: flex; align-items: center; gap: 8px; }
+.excel-nav span { flex: 1; text-align: center; font-size: 14px; }
+.excel-nav button { padding: 6px 14px; }
+#imp-campos label small { color: var(--primario); }

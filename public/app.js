@@ -346,28 +346,146 @@ let IMP = null;   // plantilla elegida
 
 async function elegirParaImprimir() {
   const id = $('#imp-plantilla').value;
-  IMP = null; $('#imp-campos').innerHTML = '';
+  IMP = null; $('#imp-campos').innerHTML = ''; pintarLista();
   if (!id) { mensaje($('#imp-msg'), 'Todavía no hay plantillas: créalas en "Diseñar".'); return; }
   mensaje($('#imp-msg'), 'Cargando plantilla…');
   try { IMP = await api('GET', '/api/plantilla?id=' + id); }
   catch (er) { return mensaje($('#imp-msg'), er.message, 'mal'); }
   IMP.id = id;
   await asegurarImagenes(IMP);
-  const campos = camposDe(IMP).filter(c => c !== '#');
-  $('#imp-campos').innerHTML = campos.map(c =>
-    `<label>${escapar(c)} <input data-campo="${escapar(c)}" value="${escapar((IMP.valores || {})[c] || '')}"></label>`).join('');
+  pintarCamposImp();
   $('#imp-num-caja').classList.toggle('oculto', !camposDe(IMP).includes('#'));
-  $$('#imp-campos input').forEach(i => i.oninput = renderImprimir);
   mensaje($('#imp-msg'), '');
   renderImprimir();
 }
 
-function valoresImprimir(numero) {
+// Campos a mano. Los que vienen de una columna de la lista se muestran
+// bloqueados con el valor de la fila que se está viendo.
+const MANUAL = {};
+function pintarCamposImp() {
+  const campos = IMP ? camposDe(IMP).filter(c => c !== '#') : [];
+  const deLista = LISTA ? columnasLista().campos : {};
+  $('#imp-campos').innerHTML = campos.map(c => {
+    if (c in deLista) return `<label>${escapar(c)} <small>· columna "${escapar(LISTA.titulos[deLista[c]])}"</small>
+      <input data-campo="${escapar(c)}" data-lista="1" disabled value="${escapar(celdaLista(LISTA.vista, deLista[c]))}"></label>`;
+    const v = c in MANUAL ? MANUAL[c] : (IMP.valores || {})[c] || '';
+    return `<label>${escapar(c)} <input data-campo="${escapar(c)}" value="${escapar(v)}"></label>`;
+  }).join('');
+  $$('#imp-campos input:not([data-lista])').forEach(i => i.oninput = () => { MANUAL[i.dataset.campo] = i.value; renderImprimir(); });
+  pintarLista();
+}
+
+// `fila`: índice en LISTA.filas cuyos datos llenan los campos con columna.
+function valoresImprimir(numero, fila) {
   const v = {};
   $$('#imp-campos input').forEach(i => v[i.dataset.campo] = i.value);
+  if (LISTA) {
+    const f = fila ?? LISTA.vista;
+    for (const [c, k] of Object.entries(columnasLista().campos)) v[c] = celdaLista(f, k);
+  }
   v['#'] = String(numero ?? (+$('#imp-num').value || 1));
   return v;
 }
+
+// ─── Lista de Excel: una etiqueta por fila ──────────────────────────
+// LISTA = { hojas, hoja, titulos, filas, vista }. La primera fila de la hoja
+// son los títulos; cada columna llena el {campo} del mismo nombre.
+let LISTA = null;
+const normalizar = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+const celdaLista = (f, k) => String((LISTA.filas[f] || [])[k] ?? '');
+
+function columnasLista() {
+  const porTitulo = {};
+  LISTA.titulos.forEach((t, k) => { const n = normalizar(t); if (n && !(n in porTitulo)) porTitulo[n] = k; });
+  const campos = {}, faltan = [];
+  const lista = IMP ? camposDe(IMP).filter(c => c !== '#') : [];
+  for (const c of lista) { const k = porTitulo[normalizar(c)]; if (k === undefined) faltan.push(c); else campos[c] = k; }
+  // Columna de cantidad por fila, si la plantilla no tiene un campo con ese nombre.
+  const nombresCampos = new Set(lista.map(normalizar));
+  const cantidad = ['copias', 'cantidad'].filter(n => !nombresCampos.has(n)).map(n => porTitulo[n]).find(k => k !== undefined);
+  return { campos, faltan, cantidad };
+}
+
+function usarHoja(i) {
+  const h = LISTA.hojas[i], filas = h.filas.map(f => f.map(c => String(c ?? '')));
+  const ini = filas.findIndex(f => f.some(c => c.trim()));
+  LISTA.hoja = i;
+  LISTA.titulos = ini < 0 ? [] : filas[ini].map(c => c.trim());
+  LISTA.filas = ini < 0 ? [] : filas.slice(ini + 1).filter(f => f.some(c => c.trim()));
+  LISTA.vista = 0;
+  $('#xl-desde').value = 1;
+  $('#xl-hasta').value = Math.max(1, LISTA.filas.length);
+  pintarCamposImp();
+  renderImprimir();
+}
+
+function cargarLista(hojas) {
+  LISTA = { hojas };
+  $('#xl-hoja').innerHTML = hojas.map((h, i) => `<option value="${i}">${escapar(h.nombre)}</option>`).join('');
+  $('#xl-hoja-caja').classList.toggle('oculto', hojas.length < 2);
+  // Se abre la primera hoja que tenga datos.
+  const i = Math.max(0, hojas.findIndex(h => h.filas.some(f => f.some(c => String(c ?? '').trim()))));
+  $('#xl-hoja').value = i;
+  usarHoja(i);
+}
+
+function quitarLista() {
+  LISTA = null;
+  $('#xl-pegar').value = '';
+  $('#xl-pegar').classList.add('oculto');
+  $('#xl-archivo').value = '';
+  pintarCamposImp();
+  renderImprimir();
+}
+
+function pintarLista() {
+  const conCampos = !!IMP && camposDe(IMP).some(c => c !== '#');
+  $('#xl').classList.toggle('oculto', !conCampos && !LISTA);
+  $('#xl-info').classList.toggle('oculto', !LISTA);
+  $('#imp-copias-txt').textContent = 'Copias';
+  if (!LISTA) return;
+  const { campos, faltan, cantidad } = columnasLista();
+  const n = LISTA.filas.length, usadas = Object.keys(campos).length;
+  const partes = [`${n} fila(s) con datos.`];
+  if (IMP) partes.push(usadas ? `Columnas usadas: ${Object.keys(campos).map(c => LISTA.titulos[campos[c]]).join(', ')}.` : 'Ninguna columna coincide con los campos de esta plantilla: revisa la fila de títulos.');
+  if (faltan.length) partes.push(`Sin columna (se llenan a mano, igual en todas): ${faltan.join(', ')}.`);
+  if (cantidad !== undefined) partes.push(`La columna "${LISTA.titulos[cantidad]}" indica cuántas copias de cada fila.`);
+  $('#xl-resumen').textContent = partes.join(' ');
+  $('#xl-fila').textContent = n ? `Fila ${LISTA.vista + 1} de ${n}` : 'Sin filas';
+  $('#xl-ant').disabled = LISTA.vista <= 0;
+  $('#xl-sig').disabled = LISTA.vista >= n - 1;
+  if (cantidad !== undefined) $('#imp-copias-txt').textContent = 'Copias (filas sin cantidad)';
+}
+
+function verFila(i) {
+  if (!LISTA) return;
+  LISTA.vista = Math.min(Math.max(0, i), Math.max(0, LISTA.filas.length - 1));
+  pintarCamposImp();
+  renderImprimir();
+}
+
+$('#xl-pegar-btn').onclick = () => { const t = $('#xl-pegar'); t.classList.remove('oculto'); t.focus(); };
+$('#xl-pegar').oninput = () => {
+  const t = $('#xl-pegar').value;
+  if (!t.trim()) return;
+  cargarLista([{ nombre: 'Pegado', filas: Excel.leerTexto(t) }]);
+};
+$('#xl-abrir').onclick = () => $('#xl-archivo').click();
+$('#xl-archivo').onchange = async () => {
+  const f = $('#xl-archivo').files[0];
+  if (!f) return;
+  mensaje($('#imp-msg'), `Leyendo ${f.name}…`);
+  try {
+    cargarLista(await Excel.leerArchivo(f));
+    $('#xl-pegar').classList.add('oculto');
+    mensaje($('#imp-msg'), '');
+  } catch (er) { mensaje($('#imp-msg'), er.message, 'mal'); }
+  $('#xl-archivo').value = '';
+};
+$('#xl-hoja').onchange = () => usarHoja(+$('#xl-hoja').value);
+$('#xl-ant').onclick = () => verFila(LISTA.vista - 1);
+$('#xl-sig').onclick = () => verFila(LISTA.vista + 1);
+$('#xl-quitar').onclick = quitarLista;
 
 function avisoImprimir() {
   const av = $('#imp-aviso');
@@ -394,21 +512,71 @@ $('#imp-boton').onclick = async () => {
   }
   const perfil = PERFILES[IMP.perfil], copias = Math.max(1, +$('#imp-copias').value || 1);
   if (!perfil) return mensaje($('#imp-msg'), `La plantilla usa el rollo "${IMP.perfil}", que ya no existe.`, 'mal');
-  mensaje($('#imp-msg'), 'Enviando…');
   const numerada = camposDe(IMP).includes('#'), desde = +$('#imp-num').value || 1;
-  const boton = $('#imp-boton'); boton.disabled = true;
-  try {
-    // Con {#} cada copia es distinta: un trabajo por copia.
-    const tandas = numerada ? Array.from({ length: copias }, (_, i) => ({ n: desde + i, copias: 1 })) : [{ n: desde, copias }];
-    for (const [i, t] of tandas.entries()) {
-      const r = dibujar(IMP, perfil, valoresImprimir(t.n));
-      if (r.errores.length) throw new Error(r.errores.join(' · '));
-      if (tandas.length > 1) mensaje($('#imp-msg'), `Enviando ${i + 1} de ${tandas.length}…`);
-      await api('POST', '/api/imprimir', { perfil: IMP.perfil, nombre: IMP.nombre, ancho: r.W, alto: r.H, bits: aBase64(r.bits), copias: t.copias });
+
+  // Sin lista: una sola fila "virtual" con lo escrito a mano.
+  let filas = [{ fila: undefined, copias }];
+  if (LISTA) {
+    const { campos, cantidad } = columnasLista();
+    const n = LISTA.filas.length;
+    if (!n) return mensaje($('#imp-msg'), 'La lista no tiene filas con datos.', 'mal');
+    if (!Object.keys(campos).length) return mensaje($('#imp-msg'), 'Ninguna columna de la lista coincide con los campos de la plantilla.', 'mal');
+    const a = Math.max(1, +$('#xl-desde').value || 1), b = Math.min(n, +$('#xl-hasta').value || n);
+    if (a > b) return mensaje($('#imp-msg'), `Revisa las filas: "desde" (${a}) es mayor que "hasta" (${b}).`, 'mal');
+    filas = [];
+    for (let f = a - 1; f < b; f++) {
+      let c = copias;
+      if (cantidad !== undefined && celdaLista(f, cantidad).trim() !== '') {
+        c = Math.round(+celdaLista(f, cantidad).replace(',', '.'));
+        if (!(c >= 0) || c > 500) return mensaje($('#imp-msg'), `Fila ${f + 1}: la cantidad "${celdaLista(f, cantidad)}" no es válida (0 a 500).`, 'mal');
+      }
+      if (c > 0) filas.push({ fila: f, copias: c });
     }
-    if (numerada) $('#imp-num').value = desde + copias;
-    mensaje($('#imp-msg'), `Listo: ${copias} etiqueta(s) enviadas.`, 'ok');
-  } catch (er) { mensaje($('#imp-msg'), er.message, 'mal'); }
+    const total = filas.reduce((s, t) => s + t.copias, 0);
+    if (!total) return mensaje($('#imp-msg'), 'Todas las filas elegidas tienen cantidad 0.', 'mal');
+    if (!confirm(`Se imprimirán ${total} etiqueta(s) de ${filas.length} fila(s) (filas ${a} a ${b}) en "${nombrePerfil(IMP.perfil)}". ¿Continuar?`)) return;
+  }
+
+  // Con {#} cada copia es distinta: un trabajo por copia.
+  const tandas = [];
+  let num = desde;
+  for (const t of filas) {
+    if (numerada) for (let i = 0; i < t.copias; i++) tandas.push({ fila: t.fila, n: num++, copias: 1 });
+    else tandas.push({ fila: t.fila, n: num, copias: t.copias });
+  }
+
+  const boton = $('#imp-boton'), detener = $('#imp-detener');
+  boton.disabled = true;
+  let enviadas = 0, parar = false;
+  try {
+    // Primero se dibuja todo: si alguna fila tiene un código inválido no sale nada.
+    mensaje($('#imp-msg'), LISTA ? 'Revisando las filas…' : 'Enviando…');
+    const malas = [];
+    for (const [i, t] of tandas.entries()) {
+      const r = dibujar(IMP, perfil, valoresImprimir(t.n, t.fila));
+      if (r.errores.length) malas.push((t.fila !== undefined ? `Fila ${t.fila + 1}: ` : '') + r.errores.join(' · '));
+      if (malas.length >= 5) break;
+      if (LISTA && i % 25 === 24) await new Promise(ok => setTimeout(ok));
+    }
+    if (malas.length) throw new Error(malas.join(' | ') + (LISTA ? ' — No se imprimió nada.' : ''));
+
+    detener.classList.toggle('oculto', tandas.length < 2);
+    detener.onclick = () => { parar = true; detener.disabled = true; };
+    detener.disabled = false;
+    for (const [i, t] of tandas.entries()) {
+      if (parar) break;
+      const r = dibujar(IMP, perfil, valoresImprimir(t.n, t.fila));
+      if (tandas.length > 1) mensaje($('#imp-msg'), `Enviando ${i + 1} de ${tandas.length}${t.fila !== undefined ? ` (fila ${t.fila + 1})` : ''}…`);
+      if (t.fila !== undefined) verFila(t.fila);
+      await api('POST', '/api/imprimir', { perfil: IMP.perfil, nombre: IMP.nombre, ancho: r.W, alto: r.H, bits: aBase64(r.bits), copias: t.copias });
+      enviadas += t.copias;
+      if (numerada) $('#imp-num').value = t.n + 1;
+    }
+    mensaje($('#imp-msg'), parar ? `Detenido: se enviaron ${enviadas} etiqueta(s).` : `Listo: ${enviadas} etiqueta(s) enviadas.`, parar ? '' : 'ok');
+  } catch (er) {
+    mensaje($('#imp-msg'), er.message + (enviadas ? ` (ya se habían enviado ${enviadas} etiqueta(s))` : ''), 'mal');
+  }
+  detener.classList.add('oculto');
   boton.disabled = false;
   renderImprimir();
 };

@@ -31,9 +31,33 @@
       <div class="lienzo-caja"><canvas id="imp-vista"></canvas></div>
       <div class="panel">
         <div id="imp-campos"></div>
-        <label>Copias <input id="imp-copias" type="number" min="1" max="500" value="1"></label>
+        <div id="xl" class="excel">
+          <div class="excel-tit">Lista de Excel <small>una etiqueta por fila</small></div>
+          <div class="botones">
+            <button id="xl-pegar-btn">Pegar desde Excel</button>
+            <button id="xl-abrir">Abrir .xlsx / .csv</button>
+            <input id="xl-archivo" type="file" accept=".xlsx,.csv,.tsv,.txt" hidden>
+          </div>
+          <textarea id="xl-pegar" class="oculto" rows="4" placeholder="Copia en Excel las filas, incluida la fila de títulos, y pégalas aquí"></textarea>
+          <div id="xl-info" class="oculto">
+            <label id="xl-hoja-caja" class="oculto">Hoja <select id="xl-hoja"></select></label>
+            <p id="xl-resumen" class="ayuda"></p>
+            <div class="excel-nav">
+              <button id="xl-ant" title="Fila anterior">◀</button>
+              <span id="xl-fila"></span>
+              <button id="xl-sig" title="Fila siguiente">▶</button>
+            </div>
+            <div class="rejilla">
+              <label>Imprimir desde fila <input id="xl-desde" type="number" min="1" value="1"></label>
+              <label>hasta fila <input id="xl-hasta" type="number" min="1" value="1"></label>
+            </div>
+            <button id="xl-quitar">Quitar lista</button>
+          </div>
+        </div>
+        <label><span id="imp-copias-txt">Copias</span> <input id="imp-copias" type="number" min="1" max="500" value="1"></label>
         <label id="imp-num-caja" class="oculto">Numerar desde <input id="imp-num" type="number" value="1"></label>
         <button id="imp-boton" class="primario">Imprimir</button>
+        <button id="imp-detener" class="peligro oculto">Detener</button>
         <p id="imp-msg" class="msg"></p>
       </div>
     </div>
@@ -99,6 +123,7 @@
 
 <script src="vendor/JsBarcode.all.min.js"></script>
 <script src="vendor/qrcode.js"></script>
+<script src="excel.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
