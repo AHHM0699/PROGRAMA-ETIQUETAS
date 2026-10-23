@@ -75,3 +75,7 @@ code { background: var(--fondo); padding: 1px 5px; border-radius: 4px; }
 .excel-nav span { flex: 1; text-align: center; font-size: 14px; }
 .excel-nav button { padding: 6px 14px; }
 #imp-campos label small { color: var(--primario); }
+.lista .candado { margin-left: auto; opacity: .35; padding: 0 2px; }
+.lista button.bloq .candado { opacity: 1; }
+.lista button.bloq span:first-child { color: var(--suave); }
+.bloqueo { font-weight: 600; }

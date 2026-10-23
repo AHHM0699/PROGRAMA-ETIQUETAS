@@ -261,7 +261,7 @@ function aBase64(u8) {
 const ladoManija = W => Math.max(28, Math.round(W / 16));
 function manija(c, W) { const m = ladoManija(W); return { x: c.x + c.w - m / 2, y: c.y + c.h - m / 2, w: m, h: m }; }
 
-function mostrar(canvasVisible, res, seleccion) {
+function mostrar(canvasVisible, res, seleccion, sinManija) {
   if (canvasVisible.width !== res.W) canvasVisible.width = res.W;
   if (canvasVisible.height !== res.H) canvasVisible.height = res.H;
   const x = canvasVisible.getContext('2d');
@@ -269,9 +269,11 @@ function mostrar(canvasVisible, res, seleccion) {
   if (seleccion) {
     x.strokeStyle = '#1f6feb'; x.lineWidth = Math.max(2, res.W / 300); x.setLineDash([10, 6]);
     x.strokeRect(seleccion.x - 2, seleccion.y - 2, seleccion.w + 4, seleccion.h + 4);
-    const m = manija(seleccion, res.W);
-    x.setLineDash([]); x.fillStyle = '#1f6feb'; x.fillRect(m.x, m.y, m.w, m.h);
-    x.strokeStyle = '#fff'; x.lineWidth = 3; x.strokeRect(m.x, m.y, m.w, m.h);
+    if (!sinManija) {
+      const m = manija(seleccion, res.W);
+      x.setLineDash([]); x.fillStyle = '#1f6feb'; x.fillRect(m.x, m.y, m.w, m.h);
+      x.strokeStyle = '#fff'; x.lineWidth = 3; x.strokeRect(m.x, m.y, m.w, m.h);
+    }
   }
   // Líneas guía del imán (solo mientras se arrastra).
   if (canvasVisible.id === 'dis-lienzo' && GUIAS.length) {
@@ -298,7 +300,7 @@ function lineasEtiqueta(W, H) {
 // Mueve el elemento para que su caja quede en `donde` (izq|centro|der|arriba|medio|abajo|centrar).
 function alinear(donde) {
   const e = PL.elementos[SEL], c = ULTIMO && ULTIMO.cajas[SEL];
-  if (!e || !c) return;
+  if (!e || !c || e.bloqueado) return;
   const W = ULTIMO.W, H = ULTIMO.H, m = MARGEN_MM * PMM;
   let dx = 0, dy = 0;
   if (donde === 'izq') dx = m - c.x;
@@ -759,19 +761,34 @@ function renderEditor() {
   const pl = { ...PL, elementos: PL.elementos.map(e => (e.tipo === 'barras' || e.tipo === 'qr') ? { ...e, datos: sustituir(e.datos, {}, rellenoCodigos) }
     : e.tipo === 'precio' ? { ...e, texto: sustituir(e.texto, {}, k => (k === '#' ? '1' : '12.50')) } : e) };
   ULTIMO = dibujar(pl, p, {}, relleno);
-  mostrar($('#dis-lienzo'), ULTIMO, ULTIMO.cajas[SEL]);
+  mostrar($('#dis-lienzo'), ULTIMO, ULTIMO.cajas[SEL], PL.elementos[SEL] && PL.elementos[SEL].bloqueado);
   mensaje($('#dis-msg'), ULTIMO.errores.join(' · '), ULTIMO.errores.length ? 'mal' : '');
   $('#dis-lista').innerHTML = PL.elementos.map((e, i) =>
-    `<button data-i="${i}" class="${i === SEL ? 'sel' : ''}"><span>${NOMBRES[e.tipo]}</span><small>${escapar(String(e.texto || e.datos || '').slice(0, 24))}</small></button>`).join('')
+    `<button data-i="${i}" class="${i === SEL ? 'sel' : ''}${e.bloqueado ? ' bloq' : ''}"><span>${NOMBRES[e.tipo]}</span><small>${escapar(String(e.texto || e.datos || '').slice(0, 24))}</small>` +
+    `<span class="candado" data-bloq="${i}" title="${e.bloqueado ? 'Bloqueado: toca para desbloquear' : 'Bloquear para que no se mueva'}">${e.bloqueado ? '🔒' : '🔓'}</span></button>`).join('')
     || '<p class="ayuda">Agrega elementos con los botones de arriba.</p>';
-  $$('#dis-lista button').forEach(b => b.onclick = () => { SEL = +b.dataset.i; renderEditor(); pintarProps(); });
+  $$('#dis-lista button').forEach(b => b.onclick = ev => {
+    const c = ev.target.closest('[data-bloq]');
+    if (c) { alternarBloqueo(+c.dataset.bloq); return; }
+    SEL = +b.dataset.i; renderEditor(); pintarProps();
+  });
+}
+
+// Bloqueado = no se mueve ni cambia de tamaño en la etiqueta (ni con los
+// botones de alinear); sus datos sí se pueden cambiar en el panel.
+function alternarBloqueo(i) {
+  const e = PL.elementos[i];
+  if (!e) return;
+  e.bloqueado = !e.bloqueado;
+  renderEditor(); if (i === SEL) pintarProps(); registrar();
 }
 
 function pintarProps() {
   const caja = $('#dis-props');
   const e = PL.elementos[SEL];
   if (!e) { caja.innerHTML = ''; return; }
-  caja.innerHTML = '<div class="rejilla">' + PROPS[e.tipo].map(([k, et, t, ops]) => {
+  caja.innerHTML = `<label class="check bloqueo"><input id="dis-bloq" type="checkbox" ${e.bloqueado ? 'checked' : ''}> 🔒 Bloqueado (no se mueve en la etiqueta)</label>` +
+    '<div class="rejilla">' + PROPS[e.tipo].map(([k, et, t, ops]) => {
     const v = e[k];
     if (t === 'area') return `<label class="ancho">${et}<textarea data-k="${k}">${escapar(v ?? '')}</textarea></label>`;
     if (t === 'texto') return `<label class="ancho">${et}<input data-k="${k}" value="${escapar(v ?? '')}"></label>`;
@@ -800,7 +817,8 @@ function pintarProps() {
     inp.oninput = () => { aplicar(); registrarLuego(); };
     inp.onchange = () => { aplicar(); registrar(); };
   });
-  caja.querySelectorAll('[data-alinear]').forEach(b => b.onclick = () => alinear(b.dataset.alinear));
+  caja.querySelector('#dis-bloq').onchange = () => alternarBloqueo(SEL);
+  caja.querySelectorAll('[data-alinear]').forEach(b => { b.disabled = !!e.bloqueado; b.onclick = () => alinear(b.dataset.alinear); });
   const mg = caja.querySelector('#dis-margen');
   mg.oninput = () => { MARGEN_MM = Math.max(0, +mg.value || 0); try { localStorage.setItem('etiquetas.margen', MARGEN_MM); } catch (e) { /* sin almacenamiento */ } };
   const btnArch = caja.querySelector('[data-archivo]');
@@ -808,7 +826,7 @@ function pintarProps() {
   caja.querySelectorAll('[data-acc]').forEach(b => b.onclick = () => {
     const a = b.dataset.acc, L = PL.elementos;
     if (a === 'quitar') { L.splice(SEL, 1); SEL = -1; }
-    if (a === 'dup') { L.splice(SEL + 1, 0, { ...e, x: e.x + 2, y: e.y + 2 }); SEL++; }
+    if (a === 'dup') { L.splice(SEL + 1, 0, { ...e, x: e.x + 2, y: e.y + 2, bloqueado: false }); SEL++; }
     if (a === 'subir' && SEL > 0) { [L[SEL - 1], L[SEL]] = [L[SEL], L[SEL - 1]]; SEL--; }
     if (a === 'bajar' && SEL < L.length - 1) { [L[SEL + 1], L[SEL]] = [L[SEL], L[SEL + 1]]; SEL++; }
     renderEditor(); pintarProps(); registrar();
@@ -902,14 +920,16 @@ $('#dis-borrar').onclick = async () => {
   cv.addEventListener('pointerdown', ev => {
     if (!ULTIMO) return;
     const p = punto(ev);
-    // La manija del elemento elegido tiene prioridad.
-    if (SEL >= 0 && ULTIMO.cajas[SEL] && dentro(p, manija(ULTIMO.cajas[SEL], ULTIMO.W))) {
+    // La manija del elemento elegido tiene prioridad (los bloqueados no tienen).
+    const elegido = PL.elementos[SEL];
+    if (elegido && !elegido.bloqueado && ULTIMO.cajas[SEL] && dentro(p, manija(ULTIMO.cajas[SEL], ULTIMO.W))) {
       arrastre = { modo: 'tam', p, orig: { ...PL.elementos[SEL] }, caja: { ...ULTIMO.cajas[SEL] }, W: ULTIMO.W, H: ULTIMO.H };
       cv.setPointerCapture(ev.pointerId);
       return;
     }
     let hit = -1;
-    for (let i = PL.elementos.length - 1; i >= 0; i--) if (dentro(p, ULTIMO.cajas[i])) { hit = i; break; }
+    // Los bloqueados no se agarran al tocar: se elige lo que haya debajo o encima.
+    for (let i = PL.elementos.length - 1; i >= 0; i--) if (!PL.elementos[i].bloqueado && dentro(p, ULTIMO.cajas[i])) { hit = i; break; }
     SEL = hit; renderEditor(); pintarProps();
     if (hit >= 0) { arrastre = { modo: 'mover', p, x: PL.elementos[hit].x, y: PL.elementos[hit].y, caja: { ...ULTIMO.cajas[hit] }, W: ULTIMO.W, H: ULTIMO.H }; cv.setPointerCapture(ev.pointerId); }
   });
