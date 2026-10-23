@@ -154,6 +154,42 @@ function dibujar(pl, perfil, valores, relleno) {
         const ax = e.alinear === 'center' ? wReal / 2 : e.alinear === 'right' ? wReal : 0;
         lineas.forEach((l, i) => x.fillText(l, ax, i * lh));
         cajas[idx] = cajaRotada(ex, ey, wReal, lineas.length * lh, e.rot);
+      } else if (e.tipo === 'precio') {
+        // Precio: enteros grandes y decimales pequeños arriba (como potencia).
+        // Se toma el último número del texto: "S/ 12.50 c/u" → "S/ 12" ⁵⁰ " c/u".
+        // De cada campo solo se usa el número ("S/ 12.50" del Excel → "12.50"):
+        // el símbolo va en el diseño, así no sale "S/ S/".
+        const soloNumero = v => { const n = String(v).match(/\d[\d,]*(?:\.\d+)?/g); return n ? n[n.length - 1] : v; };
+        const vals = Object.fromEntries(Object.entries(valores).map(([k, v]) => [k, k === '#' ? v : soloNumero(v)]));
+        const s = sustituir(e.texto, vals, relleno).replace(/\s*\n\s*/g, ' ');
+        const px = Math.max(4, e.tam * PMM), pxDec = Math.max(4, px * (e.decimales || 0.5));
+        const fuente = p => `${e.cursiva ? 'italic ' : ''}${e.negrita ? 'bold ' : ''}${p}px ${e.fuente || 'sans-serif'}`;
+        const nums = [...s.matchAll(/\d[\d,]*(?:\.\d+)?/g)], m = nums[nums.length - 1];
+        let antes = s, dec = '', despues = '';
+        if (m) {
+          const [ent, d = ''] = m[0].split('.');
+          antes = s.slice(0, m.index) + ent;
+          despues = s.slice(m.index + m[0].length);
+          dec = e.dosDecimales === false ? d : (d + '00').slice(0, Math.max(2, d.length));
+          if (dec && e.punto) dec = '.' + dec;
+        }
+        x.fillStyle = color; x.textBaseline = 'alphabetic'; x.textAlign = 'left';
+        x.font = fuente(px);
+        const altoG = x.measureText('0').actualBoundingBoxAscent || px * 0.72;
+        const wAntes = x.measureText(antes).width, wDespues = x.measureText(despues).width;
+        const bajo = Math.max(0, ...[antes, despues].map(t => t ? x.measureText(t).actualBoundingBoxDescent || 0 : 0));
+        x.font = fuente(pxDec);
+        const altoP = x.measureText('0').actualBoundingBoxAscent || pxDec * 0.72, wDec = x.measureText(dec).width;
+        const wTotal = wAntes + wDec + wDespues, anchoCaja = (e.w || 0) * PMM, wReal = Math.max(1, anchoCaja || wTotal);
+        const x0 = e.alinear === 'center' ? (wReal - wTotal) / 2 : e.alinear === 'right' ? wReal - wTotal : 0;
+        x.translate(ex, ey); x.rotate((e.rot | 0) * Math.PI / 180);
+        // La parte de arriba de los decimales queda a la altura de la de los enteros.
+        x.font = fuente(px);
+        x.fillText(antes, x0, altoG);
+        x.fillText(despues, x0 + wAntes + wDec, altoG);
+        x.font = fuente(pxDec);
+        x.fillText(dec, x0 + wAntes, altoP);
+        cajas[idx] = cajaRotada(ex, ey, wReal, altoG + bajo, e.rot);
       } else if (e.tipo === 'barras') {
         const t = document.createElement('canvas');
         const datos = sustituir(e.datos, valores, relleno);
@@ -594,12 +630,13 @@ function nuevaPlantilla() {
 
 const NUEVOS = {
   texto:    () => ({ tipo: 'texto', x: 5, y: 5, texto: 'Texto', tam: 6, fuente: 'sans-serif', negrita: true, alinear: 'left', w: 0, rot: 0 }),
+  precio:   () => ({ tipo: 'precio', x: 5, y: 5, texto: 'S/ {precio}', tam: 12, decimales: 0.5, punto: false, dosDecimales: true, fuente: 'sans-serif', negrita: true, alinear: 'left', w: 0, rot: 0 }),
   imagen:   () => { const p = PERFILES[PL.perfil]; return { tipo: 'imagen', x: 0, y: 0, w: p.ancho, h: p.alto, ajuste: 'contener', tramado: true, umbral: 128 }; },
   barras:   () => ({ tipo: 'barras', x: 5, y: 20, datos: '{codigo}', formato: 'CODE128', h: 12, modulo: 2, conTexto: true, tamTexto: 3, rot: 0 }),
   qr:       () => ({ tipo: 'qr', x: 5, y: 40, datos: 'https://', tam: 25, ecc: 'M' }),
   recuadro: () => { const p = PERFILES[PL.perfil]; return { tipo: 'recuadro', x: 2, y: 2, w: p.ancho - 4, h: p.alto - 4, grosor: 0.5, relleno: false }; },
 };
-const NOMBRES = { texto: 'Texto', imagen: 'Imagen', barras: 'Código de barras', qr: 'QR', recuadro: 'Recuadro' };
+const NOMBRES = { texto: 'Texto', precio: 'Precio', imagen: 'Imagen', barras: 'Código de barras', qr: 'QR', recuadro: 'Recuadro' };
 
 // Campos editables por tipo: [clave, etiqueta, tipo, opciones]
 const PROPS = {
@@ -607,6 +644,12 @@ const PROPS = {
     ['w', 'Ancho de caja (mm, 0 = libre)', 'num'], ['fuente', 'Fuente', 'sel', ['sans-serif', 'serif', 'monospace', 'Arial', 'Arial Black', 'Georgia', 'Impact', 'Courier New', 'Verdana']],
     ['alinear', 'Alineación', 'sel', ['left', 'center', 'right']], ['rot', 'Rotación', 'sel', [0, 90, 180, 270]],
     ['interlineado', 'Interlineado', 'num'], ['negrita', 'Negrita', 'bool'], ['cursiva', 'Cursiva', 'bool'], ['blanco', 'Blanco (sobre fondo negro)', 'bool']],
+  precio: [['texto', 'Precio (ej. S/ {precio})', 'texto'], ['x', 'X (mm)', 'num'], ['y', 'Y (mm)', 'num'], ['tam', 'Alto letra (mm)', 'num'],
+    ['decimales', 'Tamaño de los decimales (0,3 a 0,8 del alto)', 'num'],
+    ['w', 'Ancho de caja (mm, 0 = libre)', 'num'], ['fuente', 'Fuente', 'sel', ['sans-serif', 'serif', 'monospace', 'Arial', 'Arial Black', 'Georgia', 'Impact', 'Courier New', 'Verdana']],
+    ['alinear', 'Alineación', 'sel', ['left', 'center', 'right']], ['rot', 'Rotación', 'sel', [0, 90, 180, 270]],
+    ['dosDecimales', 'Siempre 2 decimales (12 → 12⁰⁰)', 'bool'], ['punto', 'Mostrar el punto antes de los decimales', 'bool'],
+    ['negrita', 'Negrita', 'bool'], ['cursiva', 'Cursiva', 'bool'], ['blanco', 'Blanco (sobre fondo negro)', 'bool']],
   imagen: [['src', 'Cambiar imagen', 'archivo'], ['x', 'X (mm)', 'num'], ['y', 'Y (mm)', 'num'], ['w', 'Ancho (mm)', 'num'], ['h', 'Alto (mm)', 'num'],
     ['ajuste', 'Ajuste', 'sel', ['contener', 'cubrir', 'estirar']], ['umbral', 'Umbral (0–255)', 'num'],
     ['tramado', 'Tramado (para fotos y degradés)', 'bool'], ['invertir', 'Invertir', 'bool']],
@@ -708,8 +751,10 @@ function renderEditor() {
   if (!p) return;
   const relleno = k => (k === '#' ? '1' : `[${k}]`);
   const rellenoCodigos = k => (k === '#' ? '1' : '123456789012');
-  // Textos muestran [campo]; códigos usan números de ejemplo para poder dibujarse.
-  const pl = { ...PL, elementos: PL.elementos.map(e => (e.tipo === 'barras' || e.tipo === 'qr') ? { ...e, datos: sustituir(e.datos, {}, rellenoCodigos) } : e) };
+  // Textos muestran [campo]; códigos usan números de ejemplo para poder dibujarse
+  // y los precios un 12.50 para que se vean los decimales.
+  const pl = { ...PL, elementos: PL.elementos.map(e => (e.tipo === 'barras' || e.tipo === 'qr') ? { ...e, datos: sustituir(e.datos, {}, rellenoCodigos) }
+    : e.tipo === 'precio' ? { ...e, texto: sustituir(e.texto, {}, k => (k === '#' ? '1' : '12.50')) } : e) };
   ULTIMO = dibujar(pl, p, {}, relleno);
   mostrar($('#dis-lienzo'), ULTIMO, ULTIMO.cajas[SEL]);
   mensaje($('#dis-msg'), ULTIMO.errores.join(' · '), ULTIMO.errores.length ? 'mal' : '');
@@ -883,7 +928,7 @@ $('#dis-borrar').onclick = async () => {
         e.w = Math.max(0.5, redondear(o.w + dx)); e.h = Math.max(0.5, redondear(o.h + dy));
       } else if (e.tipo === 'qr') {
         e.tam = Math.max(5, redondear(o.tam + Math.max(dx, dy)));
-      } else if (e.tipo === 'texto') {               // alto de letra según el alto de la caja
+      } else if (e.tipo === 'texto' || e.tipo === 'precio') {   // alto de letra según el alto de la caja
         e.tam = Math.max(1, redondear(o.tam * (c.h + dy * PMM) / c.h, 0.25));
         if (o.w) e.w = Math.max(5, redondear(o.w + dx));
       } else if (e.tipo === 'barras') {
